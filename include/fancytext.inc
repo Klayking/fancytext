@@ -6,6 +6,7 @@
 #define FANCYTEXT_VERSION			"1.0.0"
 #define FANCYTEXT_MESSAGE_LENGTH		256
 
+new Handle:FancyText_ColorsTrie;
 new Handle:FancyText_CustomColorsTrie;
 
 FancyText_PrintToChat(client, const String:message[], any:...)
@@ -31,6 +32,8 @@ FancyText_PrintToChatAllEx(author, const String:message[], any:...)
 
 FancyText_CompileMessage(String:buffer[], author = 0, bool:removeTags = false, maxlen=FANCYTEXT_MESSAGE_LENGTH)
 {
+	FancyText_CheckTrie();
+
 	new tagStart = -1;
 	new tagEnd = -1;
 	new seperator = -1;
@@ -53,28 +56,26 @@ FancyText_CompileMessage(String:buffer[], author = 0, bool:removeTags = false, m
 			else if (buffer[character] == '}')
 			{
 				tagEnd = character;
-			}		
-		}
-		else if (tagStart > -1 && tagEnd > -1)
-		{
-			if (seperator == -1)
-			{
-				strcopy(tagColor, tagEnd - tagStart, buffer[tagStart + 1]);
-			}
-			else
-			{
-				strcopy(tagColor, seperator - tagStart, buffer[tagStart + 1]);
-				strcopy(tagCustomColor, tagEnd - seperator, buffer[seperator + 1]);
-			}
 
-			break;
+				if (seperator == -1)
+				{
+					strcopy(tagColor, tagEnd - tagStart, buffer[tagStart + 1]);
+				}
+				else
+				{
+					strcopy(tagColor, seperator - tagStart, buffer[tagStart + 1]);
+					strcopy(tagCustomColor, tagEnd - seperator, buffer[seperator + 1]);
+				}
+
+				break;
+			}		
 		}
 	}
 
 	if (tagStart > -1 && tagEnd > -1)
 	{
 		decl String:tag[FANCYTEXT_MESSAGE_LENGTH];
-		strcopy(tag, tagEnd - tagStart - 1, buffer[tagStart]);
+		FancyText_SubString(buffer, tag, sizeof(tag), tagStart, tagEnd - tagStart + 1);
 
 		if (removeTags)
 		{
@@ -89,11 +90,11 @@ FancyText_CompileMessage(String:buffer[], author = 0, bool:removeTags = false, m
 					new colorLength = strlen(tagCustomColor[1]);
 
 					if (colorLength == 8)
-						Format(tagCustomColor, sizeof(tagCustomColor), "\x08%s", tagCustomColor[1]);
+						Format(tagCustomColor, sizeof(tagCustomColor), "x08%s", tagCustomColor[1]);
 					else if (colorLength == 6)
-						Format(tagCustomColor, sizeof(tagCustomColor), "\x07%s", tagCustomColor[1]);
+						Format(tagCustomColor, sizeof(tagCustomColor), "x07%s", tagCustomColor[1]);
 					else if (colorLength == 3)
-						Format(tagCustomColor, sizeof(tagCustomColor), "\x07%s%s", tagCustomColor[1], tagCustomColor[1]);
+						Format(tagCustomColor, sizeof(tagCustomColor), "x07%s%s", tagCustomColor[1], tagCustomColor[1]);
 					else
 						ThrowError("FancyText syntax error in %s", tag);					
 				}
@@ -105,16 +106,20 @@ FancyText_CompileMessage(String:buffer[], author = 0, bool:removeTags = false, m
 						return;
 					}
 
-					Format(tagCustomColor, sizeof(tagCustomColor), "\x07%06X", value);
+					Format(tagCustomColor, sizeof(tagCustomColor), "x07%06X", value);
 				}
+
+				PrintToServer(tagCustomColor);
 
 				ReplaceString(buffer, maxlen, tag, tagCustomColor, false);
 			}
 			else
 			{
-				
+				ReplaceString(buffer, maxlen, tag, "", false);
 			}
 		}
+
+		PrintToServer(buffer);
 
 		FancyText_CompileMessage(buffer, author, removeTags, maxlen);
 	}
@@ -130,13 +135,41 @@ bool:FancyText_CustomColorsSupported()
  * 
  * @return			No return
  */
-stock FancyText_CheckTrie() {
-	if(FancyText_CustomColorsTrie == INVALID_HANDLE) {
-		FancyText_CustomColorsTrie = InitColorTrie();
+stock FancyText_CheckTries() 
+{
+	if (FancyText_ColorsTrie == INVALID_HANDLE) 
+		FancyText_ColorsTrie = FancyText_InitColorTrie();
+
+	if (FancyText_CustomColorsTrie == INVALID_HANDLE) 
+		FancyText_CustomColorsTrie = FancyText_InitCustomColorTrie();
+}
+
+stock FancyText_SubString(const String:input[], String:output[], maxlen, start, numChars=0) {
+	new i = 0;
+	for(;;) {
+		if(i == maxlen - 1 || i >= numChars || input[start + i] == '\0') {
+			output[i] = '\0';
+			return;
+		}
+		output[i] = input[start + i];
+		i++;
 	}
 }
 
-stock Handle:FancyText_InitColorTrie() {
+stock Handle:FancyText_InitColorTrie() 
+{
+	new Handle:hTrie = CreateTrie();
+	SetTrieString(hTrie, "default", "\x01");
+	SetTrieString(hTrie, "darkred", "\x02");
+	SetTrieString(hTrie, "lightgreen", "\x03");
+	SetTrieString(hTrie, "red", "\x03");
+	SetTrieString(hTrie, "green", "\x04");
+	
+	return hTrie;
+}
+
+stock Handle:FancyText_InitCustomColorTrie() 
+{
 	new Handle:hTrie = CreateTrie();
 	SetTrieValue(hTrie, "aliceblue", 0xF0F8FF);
 	SetTrieValue(hTrie, "allies", 0x4D7942); // same as Allies team in DoD:S
